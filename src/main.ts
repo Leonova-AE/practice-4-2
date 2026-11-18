@@ -6,7 +6,7 @@ import { createBookFromForm } from './task4-integration';
 import { filterByTitle, sortBooks } from './task5-utils';
 import { BookCatalog } from './task6-classes';
 import { Wishlist } from './task7-wishlist';
-import { fetchBooks, saveBooks } from './mock-api';
+import { fetchBooks, saveBook, deleteBook } from './api';
 
 // ============================================================
 // СОСТОЯНИЕ ПРИЛОЖЕНИЯ
@@ -80,28 +80,7 @@ function showSaveError(message: string): void {
 // АСИНХРОННОЕ СОХРАНЕНИЕ
 // ============================================================
 
-async function persistBooks(newBooks: Book[]): Promise<boolean> {
-  if (saving || state.status !== 'success') return false;
 
-  saving = true;
-
-  try {
-    await saveBooks(newBooks);
-
-    catalog = new BookCatalog('main', newBooks);
-    state = { status: 'success', data: newBooks };
-
-    render();
-    return true;
-  } catch (error) {
-    showSaveError(
-      error instanceof Error ? error.message : 'Не удалось сохранить книги'
-    );
-    return false;
-  } finally {
-    saving = false;
-  }
-}
 
 // ============================================================
 // КАРТОЧКА КНИГИ
@@ -128,12 +107,25 @@ function createBookCard(book: Book): HTMLDivElement {
   deleteBtn.disabled = saving;
 
   deleteBtn.addEventListener('click', async () => {
-    if (state.status !== 'success' || saving) return;
+  if (state.status !== 'success') return;
 
-    const newBooks = state.data.filter(item => item.id !== book.id);
+  const rest = state.data.filter((b) => b.id !== book.id);
 
-    await persistBooks(newBooks);
-  });
+  try {
+    await deleteBook(book.id);
+
+    catalog.removeBook(book.id);
+
+    state = {
+      status: 'success',
+      data: rest
+    };
+
+    render();
+  } catch (error) {
+    showSaveError(error);
+  }
+});
 
   card.append(deleteBtn);
 
@@ -288,29 +280,36 @@ async function initApp(): Promise<void> {
 // АСИНХРОННОЕ ДОБАВЛЕНИЕ КНИГИ
 // ============================================================
 
-form.addEventListener('submit', async (event) => {
-  event.preventDefault();
-
-  if (state.status !== 'success' || saving) return;
-
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
   saveErrorMessage = '';
+
+  let newBook: Book;
 
   try {
     const formData = new FormData(form);
-    const newBook = createBookFromForm(formData);
-
-    const newBooks = [...state.data, newBook];
-
-    const saved = await persistBooks(newBooks);
-
-    if (saved) {
-      form.reset();
-      render();
-    }
+    newBook = createBookFromForm(formData);
   } catch (error) {
-    showSaveError(
-      error instanceof Error ? error.message : 'Ошибка добавления книги'
-    );
+    showSaveError(error);
+    return;
+  }
+
+  if (state.status !== 'success') return;
+
+  try {
+    const savedBook = await saveBook(newBook);
+
+    catalog.addBook(savedBook);
+
+    state = {
+      status: 'success',
+      data: [...state.data, savedBook]
+    };
+
+    form.reset();
+    render();
+  } catch (error) {
+    showSaveError(error);
   }
 });
 
